@@ -4,6 +4,10 @@ import android.app.Activity
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -67,8 +71,31 @@ private fun QingXu() {
     val prefs=remember { context.getSharedPreferences("qingxu_tasks",Activity.MODE_PRIVATE) }
     var tasks by remember { mutableStateOf(load(prefs.getString("tasks","[]") ?: "[]")) }
     fun update(next:List<Task>) { tasks=next; prefs.edit().putString("tasks",save(next)).apply() }
-    val today=remember { LocalDate.now() }
+    var today by remember { mutableStateOf(LocalDate.now()) }
     var selected by remember { mutableStateOf(today) }
+    fun refreshDate() {
+        val actualToday = LocalDate.now()
+        if (actualToday != today) {
+            // Follow the new date if the user was viewing the previous "today".
+            if (selected == today) selected = actualToday
+            today = actualToday
+        }
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refreshDate()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            refreshDate()
+            // Also refresh when the app remains open across midnight.
+            delay(30_000L)
+        }
+    }
     var tab by remember { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf<Task?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -97,7 +124,7 @@ private fun QingXu() {
                         Row(verticalAlignment=Alignment.CenterVertically) {
                             IconButton(onClick={selected=selected.minusDays(1)}){Icon(Icons.Rounded.ChevronLeft,null)}
                             Text(selected.format(DateTimeFormatter.ofPattern("yyyy年M月d日")),modifier=Modifier.weight(1f),fontWeight=FontWeight.Medium)
-                            TextButton(onClick={selected=today}){Text("今天")}
+                            TextButton(onClick={refreshDate(); selected=LocalDate.now()}){Text("今天")}
                             IconButton(onClick={selected=selected.plusDays(1)}){Icon(Icons.Rounded.ChevronRight,null)}
                         }
                         Spacer(Modifier.height(12.dp))
